@@ -1,0 +1,8 @@
+[package]
+name = "datagraph"
+version = "0.1.0"
+authors = ["Samuel Sleight <samuel.sleight@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+vec_map = "0.8.1"
