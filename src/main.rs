@@ -17,38 +17,85 @@ use find_folder::Search;
 
 use idea_db::{types, IdeaDatabase};
 
+struct CacheNode {
+    name: String,
+    position: (f64, f64)
+}
+
+struct CacheConnection {
+    from: (f64, f64),
+    to: (f64, f64)
+}
+
+struct Cache {
+    nodes: Vec<CacheNode>,
+    connections: Vec<CacheConnection>
+}
+
 struct App {
-    gl: GlGraphics,
-    db: IdeaDatabase
+    db: IdeaDatabase,
+    cache: Option<Cache>
 }
 
 impl App {
-    fn render(&mut self, args: &RenderArgs, glyphs: &mut GlyphCache) {
+    fn update_cache(&mut self) {
+        let nodes = self.db.get_thing_info().unwrap();
+        let connections = self.db.get_connection_info().unwrap();
+
+        self.cache = Some(Cache {
+            nodes: nodes
+                .iter()
+                .map(|ref node| CacheNode {
+                    name: node.thing.name.clone(),
+                    position: (node.thing.x as f64, node.thing.y as f64)
+                })
+                .collect(),
+
+            connections: connections
+                .iter()
+                .map(|connection| CacheConnection {
+                    from: nodes
+                        .iter()
+                        .find(|ref node| node.key == connection.connection.lhs)
+                        .map(|ref node| (node.thing.x as f64, node.thing.y as f64))
+                        .unwrap(),
+
+                    to: nodes
+                        .iter()
+                        .find(|ref node| node.key == connection.connection.rhs)
+                        .map(|ref node| (node.thing.x as f64, node.thing.y as f64))
+                        .unwrap()
+                })
+                .collect()
+        });
+    }
+    fn render(&mut self, args: &RenderArgs, gl: &mut GlGraphics, glyphs: &mut GlyphCache) {
         const GREEN: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
         const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
         const BLACK: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 
-        let nodes = self.db.get_thing_info().unwrap();
-        let connections = self.db.get_connection_info().unwrap();
+        if self.cache.is_none() {
+            self.update_cache();
+        }
 
-        self.gl.draw(
+        gl.draw(
             args.viewport(),
             |context, gl| {
                 clear(GREEN, gl);
 
-                for connection in connections {
-                    let lhs = nodes.iter().find(|ref node| node.key == connection.connection.lhs).unwrap();
-                    let rhs = nodes.iter().find(|ref node| node.key == connection.connection.rhs).unwrap();
-                    line(BLACK, 2.0, [lhs.thing.x as f64, lhs.thing.y as f64, rhs.thing.x as f64, rhs.thing.y as f64], context.transform, gl);
-                }
+                if let Some(ref cache) = self.cache {
+                    for connection in &cache.connections {
+                        line(BLACK, 2.0, [connection.from.0, connection.from.1, connection.to.0, connection.to.1], context.transform, gl);
+                    }
 
-                for node in nodes {
-                    let transform = context.transform.trans(node.thing.x as f64, node.thing.y as f64);
-                    ellipse(RED, [-20.0, -20.0, 40.0, 40.0], transform, gl);
+                    for node in &cache.nodes {
+                        let transform = context.transform.trans(node.position.0, node.position.1);
+                        ellipse(RED, [-20.0, -20.0, 40.0, 40.0], transform, gl);
 
-                    let width = glyphs.width(16, &node.thing.name).unwrap();
-                    let transform = transform.trans(-width / 2.0, -24.0);
-                    text(BLACK, 16, &node.thing.name, glyphs, transform, gl).unwrap();
+                        let width = glyphs.width(16, &node.name).unwrap();
+                        let transform = transform.trans(-width / 2.0, -24.0);
+                        text(BLACK, 16, &node.name, glyphs, transform, gl).unwrap();
+                    }
                 }
             });
     }
@@ -139,14 +186,16 @@ fn main() {
     };
 
     let mut app = App {
-        gl: GlGraphics::new(opengl),
-        db
+        db,
+        cache: None
     };
+
+    let mut gl = GlGraphics::new(opengl);
 
     let mut events = Events::new(EventSettings::new());
     while let Some(ref e) = events.next(&mut window) {
         if let Some(ref args) = e.render_args() {
-            app.render(args, &mut glyphs);
+            app.render(args, &mut gl, &mut glyphs);
         }
     }
 }
