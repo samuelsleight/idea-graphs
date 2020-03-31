@@ -15,25 +15,11 @@ use opengl_graphics::{GlGraphics, OpenGL, GlyphCache, TextureSettings};
 
 use find_folder::Search;
 
-use datagraph::{Graph, Index, Node, Connection};
-
-#[derive(Copy, Clone)]
-struct Position(f64, f64);
-
-#[derive(Clone)]
-struct Item {
-    position: Position,
-    label: String
-}
-
-#[derive(Clone)]
-struct Colour([f32; 4]);
+use idea_db::{types, IdeaDatabase};
 
 struct App {
     gl: GlGraphics,
-    graph: Graph<Item, Colour>,
-    nodes: Vec<Index<Node<Item, Colour>>>,
-    connections: Vec<Index<Connection<Item, Colour>>>
+    db: IdeaDatabase
 }
 
 impl App {
@@ -42,8 +28,8 @@ impl App {
         const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
         const BLACK: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 
-        let connections = self.connections.iter().map(|index| self.graph.get(*index).unwrap().clone()).collect::<Vec<_>>();
-        let nodes = self.nodes.iter().map(|index| (*index, self.graph.get(*index).unwrap().clone())).collect::<Vec<_>>();
+        let nodes = self.db.get_thing_info().unwrap();
+        let connections = self.db.get_connection_info().unwrap();
 
         self.gl.draw(
             args.viewport(),
@@ -51,20 +37,18 @@ impl App {
                 clear(GREEN, gl);
 
                 for connection in connections {
-                    let start = nodes.iter().find(|(index, _)| *index == connection.nodes()[0]).unwrap().1.data().position;
-                    let end = nodes.iter().find(|(index, _)| *index == connection.nodes()[1]).unwrap().1.data().position;
-                    let colour = connection.data();
-                    line(colour.0, 2.0, [start.0, start.1, end.0, end.1], context.transform, gl);
+                    let lhs = nodes.iter().find(|ref node| node.key == connection.connection.lhs).unwrap();
+                    let rhs = nodes.iter().find(|ref node| node.key == connection.connection.rhs).unwrap();
+                    line(BLACK, 2.0, [lhs.thing.x as f64, lhs.thing.y as f64, rhs.thing.x as f64, rhs.thing.y as f64], context.transform, gl);
                 }
 
-                for (_, node) in nodes {
-                    let item = node.data();
-                    let transform = context.transform.trans(item.position.0, item.position.1);
+                for node in nodes {
+                    let transform = context.transform.trans(node.thing.x as f64, node.thing.y as f64);
                     ellipse(RED, [-20.0, -20.0, 40.0, 40.0], transform, gl);
 
-                    let width = glyphs.width(16, &item.label).unwrap();
+                    let width = glyphs.width(16, &node.thing.name).unwrap();
                     let transform = transform.trans(-width / 2.0, -24.0);
-                    text(BLACK, 16, &item.label, glyphs, transform, gl).unwrap();
+                    text(BLACK, 16, &node.thing.name, glyphs, transform, gl).unwrap();
                 }
             });
     }
@@ -85,33 +69,78 @@ fn main() {
 
     let mut glyphs = GlyphCache::new(assets_path.join("font.ttf"), (), TextureSettings::new()).unwrap();
 
-    let mut graph = Graph::new();
+    let db = {
+        let path = assets_path.join("test.db");
+        if let Ok(db) = IdeaDatabase::load(path) {
+            db
+        } else {
+            let mut db = IdeaDatabase::new().unwrap();
 
-    let nodes = vec![
-        graph.add_node(Item {
-            position: Position(200.0, 300.0),
-            label: "Hello".to_string()
-        }),
-        graph.add_node(Item {
-            position: Position(600.0, 400.0),
-            label: "World".to_string()
-        }),
-        graph.add_node(Item {
-            position: Position(150.0, 100.0),
-            label: "Yay".to_string()
-        })
-    ];
+            let kind = db
+                .add_thing_kind(&types::ThingKind{
+                    name: "test".to_string()
+                })
+                .unwrap();
 
-    let connections = vec![
-        graph.connect_nodes(nodes[0], nodes[1], Colour([0.0, 0.0, 1.0, 1.0])),
-        graph.connect_nodes(nodes[2], nodes[0], Colour([1.0, 0.0, 1.0, 1.0]))
-    ];
+            let n1 = db
+                .add_thing(&types::Thing{
+                    kind,
+                    name: "Hello".to_string(),
+                    x: 200,
+                    y: 300
+                })
+                .unwrap();
+
+            let n2 = db
+                .add_thing(&types::Thing{
+                    kind,
+                    name: "World".to_string(),
+                    x: 600,
+                    y: 400
+                })
+                .unwrap();
+
+            let n3 = db
+                .add_thing(&types::Thing{
+                    kind,
+                    name: "Yay".to_string(),
+                    x: 150,
+                    y: 100
+                })
+                .unwrap();
+
+            let conn_kind = db
+                .add_connection_kind(&types::ConnectionKind {
+                    name: "test".to_string(),
+                    lhs: kind,
+                    rhs: kind
+                })
+                .unwrap();
+
+            db
+                .add_connection(&types::Connection {
+                    kind: conn_kind,
+                    lhs: n1,
+                    rhs: n2
+                })
+                .unwrap();
+
+            db
+                .add_connection(&types::Connection {
+                    kind: conn_kind,
+                    lhs: n1,
+                    rhs: n3
+                })
+                .unwrap();
+
+            db.save(assets_path.join("test.db")).unwrap();
+            db
+        }
+    };
 
     let mut app = App {
         gl: GlGraphics::new(opengl),
-        graph,
-        nodes,
-        connections
+        db
     };
 
     let mut events = Events::new(EventSettings::new());

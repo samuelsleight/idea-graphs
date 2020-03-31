@@ -5,7 +5,7 @@ authors = ["Samuel Sleight <samuel.sleight@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-datagraph = { path = "libs/datagraph" }
+idea-db = { path = "libs/idea-db" }
 
 find_folder = "0.3.0"
 
