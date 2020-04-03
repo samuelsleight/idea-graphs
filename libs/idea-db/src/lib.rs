@@ -67,16 +67,7 @@ impl IdeaDatabase {
 
     pub fn get_thing_info(&mut self) -> Result<Vec<types::FullThing>> {
         self.conn
-            .prepare_cached(
-                "SELECT
-                    thing.id,
-                    thing.kind,
-                    thing.name,
-                    thing.x,
-                    thing.y,
-                    thing_kind.name kind_name
-                FROM
-                    thing JOIN thing_kind ON thing.kind = thing_kind.id;")?
+            .prepare_cached("SELECT * FROM full_thing;")?
             .query_map(
                 params![],
                 |row| Ok(types::FullThing {
@@ -96,17 +87,7 @@ impl IdeaDatabase {
 
     pub fn get_connection_info(&mut self) -> Result<Vec<types::FullConnection>> {
         self.conn
-            .prepare_cached(
-                "SELECT
-                    connection.id,
-                    connection.kind,
-                    connection.lhs,
-                    connection.rhs,
-                    connection_kind.name kind_name,
-                    connection_kind.lhs lhs_kind,
-                    connection_kind.rhs rhs_kind
-                FROM
-                    connection JOIN connection_kind ON connection.kind = connection_kind.id;")?
+            .prepare_cached("SELECT * FROM full_connection")?
             .query_map(
                 params![],
                 |row| Ok(types::FullConnection {
@@ -118,9 +99,11 @@ impl IdeaDatabase {
                     },
                     kind: types::ConnectionKind {
                         name: row.get("kind_name")?,
-                        lhs: Key::new(row.get("lhs_kind")?),
-                        rhs: Key::new(row.get("rhs_kind")?),
-                    }
+                        lhs: Key::new(row.get("kind_lhs")?),
+                        rhs: Key::new(row.get("kind_rhs")?),
+                    },
+                    from: (row.get("lhs_x")?, row.get("lhs_y")?),
+                    to: (row.get("rhs_x")?, row.get("rhs_y")?)
                 }))?
             .collect()
     }
@@ -177,8 +160,7 @@ fn create_database(conn: &mut Connection) -> Result<()>
             *
         FROM
             all_possibilities
-                JOIN connection_kind
-                USING(lhs, rhs);",
+                JOIN connection_kind USING(lhs, rhs);",
         params![])?;
 
     conn.execute(
@@ -189,6 +171,41 @@ fn create_database(conn: &mut Connection) -> Result<()>
             SELECT RAISE(FAIL, \"Invalid connection\");
         END;",
         params![])?;
+
+    conn.execute(
+        "CREATE VIEW full_thing AS
+        SELECT
+            thing.id,
+            thing.kind,
+            thing.name,
+            thing.x,
+            thing.y,
+            thing_kind.name kind_name
+        FROM
+            thing
+                JOIN thing_kind ON thing.kind = thing_kind.id;",
+        params![])?;
+
+        conn.execute(
+            "CREATE VIEW full_connection AS
+            SELECT
+                connection.id,
+                connection.kind,
+                connection.lhs,
+                connection.rhs,
+                connection_kind.name kind_name,
+                connection_kind.lhs kind_lhs,
+                connection_kind.rhs kind_rhs,
+                lhs.x lhs_x,
+                lhs.y lhs_y,
+                rhs.x rhs_x,
+                rhs.y rhs_y
+            FROM
+                connection
+                    JOIN connection_kind ON connection.kind = connection_kind.id
+                    JOIN thing AS lhs ON connection.lhs = lhs.id
+                    JOIN thing AS rhs ON connection.rhs = rhs.id;",
+            params![])?;
 
     Ok(())
 }

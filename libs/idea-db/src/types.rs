@@ -32,5 +32,7 @@ pub struct FullThing {
 pub struct FullConnection {
     pub key: Key<Connection>,
     pub connection: Connection,
-    pub kind: ConnectionKind
+    pub kind: ConnectionKind,
+    pub from: (i64, i64),
+    pub to: (i64, i64)
 }

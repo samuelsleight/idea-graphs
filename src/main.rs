@@ -54,17 +54,8 @@ impl App {
             connections: connections
                 .iter()
                 .map(|connection| CacheConnection {
-                    from: nodes
-                        .iter()
-                        .find(|ref node| node.key == connection.connection.lhs)
-                        .map(|ref node| (node.thing.x as f64, node.thing.y as f64))
-                        .unwrap(),
-
-                    to: nodes
-                        .iter()
-                        .find(|ref node| node.key == connection.connection.rhs)
-                        .map(|ref node| (node.thing.x as f64, node.thing.y as f64))
-                        .unwrap()
+                    from: (connection.from.0 as f64, connection.from.1 as f64),
+                    to: (connection.to.0 as f64, connection.to.1 as f64)
                 })
                 .collect()
         });
